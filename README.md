@@ -18,7 +18,9 @@ UrbanFlow is a React + Vite logistics platform with driver/operator dashboards a
 
 This repo is prepared for Vercel with:
 - SPA routing rewrite (`vercel.json`)
-- Serverless API entrypoint (`api/index.js`) that mounts existing Express routes
+- Serverless API routes:
+  - `api/predict-cost.js`
+  - `api/consolidation/dashboard.js`
 
 ### Vercel Project Settings
 
@@ -43,6 +45,6 @@ Optional:
 
 ## Notes
 
-- Frontend calls `/api/*` are routed to the serverless function via `vercel.json`.
+- Frontend calls `/api/*` are served by Vercel serverless functions under the `api/` folder.
 - Client-side routes are rewritten to `index.html`, so direct navigation to nested routes works.
 - On Vercel, `/api/predict-cost` now uses a JS fallback estimator by default to avoid Python runtime failures.

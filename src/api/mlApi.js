@@ -1,18 +1,29 @@
-﻿export async function predictTripCost(orderData) {
-  const response = await fetch("/api/predict-cost", {
-    method: "POST",
+async function parseApiResponse(response) {
+  const raw = await response.text()
+  let data = null
+  try {
+    data = raw ? JSON.parse(raw) : {}
+  } catch (_error) {
+    if (!response.ok) {
+      throw new Error(raw?.slice(0, 180) || `HTTP ${response.status}`)
+    }
+    throw new Error('API returned non-JSON response.')
+  }
+  if (!response.ok) {
+    throw new Error(data?.error || `HTTP ${response.status}`)
+  }
+  return data
+}
+
+export async function predictTripCost(orderData) {
+  const response = await fetch('/api/predict-cost', {
+    method: 'POST',
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
     },
     body: JSON.stringify(orderData),
-  });
-
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.error || "Failed to fetch prediction.");
-  }
-
-  return data;
+  })
+  return parseApiResponse(response)
 }
 
 export async function fetchExampleTripCost() {
@@ -23,16 +34,13 @@ export async function fetchExampleTripCost() {
     priority_num: 3,
     fuel_used: 0.5,
     time_remaining_hr: 4,
-  };
+  }
 
-  return predictTripCost(sampleOrder);
+  return predictTripCost(sampleOrder)
 }
 
 export async function fetchConsolidationDashboard() {
-  const response = await fetch("/api/consolidation/dashboard");
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.error || "Failed to fetch consolidation dashboard.");
-  }
-  return data;
+  const response = await fetch('/api/consolidation/dashboard')
+  return parseApiResponse(response)
 }
+

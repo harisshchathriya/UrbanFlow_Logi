@@ -1,11 +1,10 @@
 import { Router } from "express";
-
-import { getConsolidationDashboard } from "../controllers/consolidationController.js";
-import { predictCost } from "../controllers/mlController.js";
+import { predictCost } from "../../server/controllers/mlController.js";
+import { getConsolidationDashboard } from "../../server/controllers/consolidationController.js";
 
 const router = Router();
 
-router.post("/predict-cost", predictCost);
+router.post("/optimize-route", predictCost);
 router.get("/consolidation/dashboard", getConsolidationDashboard);
 router.get("/consolidation-dashboard", getConsolidationDashboard);
 

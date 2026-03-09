@@ -28,6 +28,7 @@ export default function LoadConsolidation() {
       return undefined
     }
     let mounted = true
+    let timer = null
     const load = async () => {
       try {
         const payload = await fetchConsolidationDashboard()
@@ -35,16 +36,20 @@ export default function LoadConsolidation() {
           setData(payload)
           setError('')
         }
+        return true
       } catch (e) {
         if (mounted) setError(String(e?.message || 'Failed to fetch ML dashboard'))
+        return false
       }
     }
 
-    load()
-    const timer = setInterval(load, 15000)
+    load().then((ok) => {
+      if (!mounted || !ok) return
+      timer = setInterval(load, 15000)
+    })
     return () => {
       mounted = false
-      clearInterval(timer)
+      if (timer) clearInterval(timer)
     }
   }, [navigate, operator?.email])
 

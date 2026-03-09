@@ -27,6 +27,51 @@ const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supa
 
 const CLUSTER_COLORS = ["#2563eb", "#16a34a", "#db2777", "#ea580c", "#7c3aed", "#0f766e", "#9333ea"];
 
+function isMissingResourceError(error) {
+  if (!error) return false;
+  if (error.status === 404) return true;
+  if (error.code === "42P01" || error.code === "PGRST205") return true;
+  const text = String(error.message || "").toLowerCase();
+  return (
+    text.includes("relation") ||
+    text.includes("does not exist") ||
+    text.includes("could not find the table")
+  );
+}
+
+function isSupabaseUnavailableError(error) {
+  if (!error) return false;
+  const text = String(error.message || "").toLowerCase();
+  return text.includes("supabase is not configured");
+}
+
+function isUpstreamFetchError(error) {
+  if (!error) return false;
+  const text = String(error.message || "").toLowerCase();
+  return (
+    text.includes("fetch failed") ||
+    text.includes("network") ||
+    text.includes("failed to fetch") ||
+    text.includes("econnrefused") ||
+    text.includes("enotfound") ||
+    text.includes("timed out")
+  );
+}
+
+function isPermissionError(error) {
+  if (!error) return false;
+  if (error.status === 401 || error.status === 403) return true;
+  const text = String(error.message || "").toLowerCase();
+  return (
+    text.includes("permission denied") ||
+    text.includes("row-level security") ||
+    text.includes("not authorized") ||
+    text.includes("jwt") ||
+    text.includes("invalid api key") ||
+    text.includes("forbidden")
+  );
+}
+
 function toNumber(value, fallback = 0) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -45,6 +90,25 @@ function getRemainingMinutes(deadline) {
 }
 
 function normalizeOrder(row) {
+  if (!row || typeof row !== "object") {
+    return {
+      id: null,
+      order_id: null,
+      pickup_latitude: 0,
+      pickup_longitude: 0,
+      delivery_latitude: 0,
+      delivery_longitude: 0,
+      pickup_area: "Unknown",
+      packages: 1,
+      weight: 0,
+      volume: 0,
+      distance_km: 0,
+      load_type: "General",
+      priority: "Medium",
+      status: "available",
+      delivery_deadline: null,
+    };
+  }
   return {
     id: row.id,
     order_id: row.order_id || row.id,
@@ -160,11 +224,15 @@ function clusterOrders(orders, drivers) {
 async function fetchFromFirstTable(tableNames, queryBuilder) {
   if (!supabase) return { data: [], error: new Error("Supabase is not configured on backend.") };
 
+  let firstNonMissingError = null;
+  let lastError = null;
   for (const tableName of tableNames) {
     const { data, error } = await queryBuilder(supabase.from(tableName));
     if (!error) return { data: data || [], error: null };
+    lastError = error;
+    if (!isMissingResourceError(error) && !firstNonMissingError) firstNonMissingError = error;
   }
-  return { data: [], error: new Error(`Could not fetch from tables: ${tableNames.join(", ")}`) };
+  return { data: [], error: firstNonMissingError || lastError || new Error(`Could not fetch from tables: ${tableNames.join(", ")}`) };
 }
 
 export async function getConsolidationDashboard(req, res) {
@@ -174,12 +242,27 @@ export async function getConsolidationDashboard(req, res) {
       fetchFromFirstTable(["drivers", "Driver"], (table) => table.select("*")),
     ]);
 
-    if (ordersResp.error) {
+    const canFallbackToEmptyOrders =
+      isMissingResourceError(ordersResp.error) ||
+      isSupabaseUnavailableError(ordersResp.error) ||
+      isUpstreamFetchError(ordersResp.error) ||
+      isPermissionError(ordersResp.error);
+    if (ordersResp.error && !canFallbackToEmptyOrders) {
       return res.status(500).json({ error: ordersResp.error.message });
     }
 
-    const orders = ordersResp.data.map(normalizeOrder);
-    const drivers = driversResp.error ? [] : driversResp.data;
+    const orderRows = Array.isArray(ordersResp.data) ? ordersResp.data : [];
+    const orders = (ordersResp.error ? [] : orderRows)
+      .filter((row) => row && typeof row === "object")
+      .map(normalizeOrder);
+    const canFallbackToEmptyDrivers =
+      isMissingResourceError(driversResp.error) ||
+      isSupabaseUnavailableError(driversResp.error) ||
+      isUpstreamFetchError(driversResp.error) ||
+      isPermissionError(driversResp.error);
+    const driverRows = Array.isArray(driversResp.data) ? driversResp.data : [];
+    const drivers = (driversResp.error && !canFallbackToEmptyDrivers ? [] : driverRows)
+      .filter((driver) => driver && typeof driver === "object");
     const activeDrivers = drivers.filter((driver) => {
       const state = String(driver.status || "").toLowerCase();
       return ["active", "on trip", "in_transit", "in transit", "enroute", "assigned", "in_progress"].includes(state);
@@ -311,3 +394,10 @@ export async function getConsolidationDashboard(req, res) {
   }
 }
 
+export const __private__ = {
+  isMissingResourceError,
+  isSupabaseUnavailableError,
+  isUpstreamFetchError,
+  isPermissionError,
+  normalizeOrder,
+};

@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "start": "vite",
+    "start": "node backend/server.js",
     "dev": "vite",
     "server": "node server.js",
     "train:ml": "python ml/train_model.py",
